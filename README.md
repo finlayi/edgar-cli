@@ -16,7 +16,7 @@ Agent-friendly SEC EDGAR CLI for filings and company facts.
 ## Install / Run
 
 ```bash
-npx edgar --help
+npx edgar-cli --help
 ```
 
 Local development:
@@ -40,7 +40,7 @@ export EDGAR_USER_AGENT="Your Name your.email@example.com"
 Or pass per command:
 
 ```bash
-npx edgar --user-agent "Your Name your.email@example.com" resolve AAPL
+npx edgar-cli --user-agent "Your Name your.email@example.com" resolve AAPL
 ```
 
 If identity is missing, commands fail with `IDENTITY_REQUIRED`.
@@ -49,16 +49,16 @@ If identity is missing, commands fail with `IDENTITY_REQUIRED`.
 
 ```bash
 # Resolve ticker -> canonical SEC identity mapping
-npx edgar --user-agent "Your Name your.email@example.com" resolve AAPL
+npx edgar-cli --user-agent "Your Name your.email@example.com" resolve AAPL
 
 # List recent 10-K filings
-npx edgar --user-agent "Your Name your.email@example.com" filings list --id AAPL --form 10-K --query-limit 5
+npx edgar-cli --user-agent "Your Name your.email@example.com" filings list --id AAPL --form 10-K --query-limit 5
 
 # Get filing document URL by accession
-npx edgar --user-agent "Your Name your.email@example.com" filings get --id AAPL --accession 0000320193-26-000006 --format url
+npx edgar-cli --user-agent "Your Name your.email@example.com" filings get --id AAPL --accession 0000320193-26-000006 --format url
 
 # Get concept data (latest per unit)
-npx edgar --user-agent "Your Name your.email@example.com" facts get --id AAPL --taxonomy us-gaap --concept Revenues --latest
+npx edgar-cli --user-agent "Your Name your.email@example.com" facts get --id AAPL --taxonomy us-gaap --concept Revenues --latest
 ```
 
 ## Output Contract (default)
