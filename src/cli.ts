@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import { realpathSync } from 'node:fs';
 import { Command, CommanderError } from 'commander';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import { runFactsGet } from './commands/facts.js';
 import { runFilingsGet, runFilingsList } from './commands/filings.js';
@@ -325,7 +326,20 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+function isDirectExecution(): boolean {
+  const argvPath = process.argv[1];
+  if (!argvPath) {
+    return false;
+  }
+
+  try {
+    return realpathSync(argvPath) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) {
   runCli(process.argv.slice(2)).then((exitCode) => {
     process.exit(exitCode);
   });

@@ -8,6 +8,7 @@
     "access": "public"
   },
   "bin": {
+    "edgar-cli": "dist/cli.js",
     "edgar": "dist/cli.js"
   },
   "files": [
