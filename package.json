@@ -1,0 +1,60 @@
+{
+  "name": "edgar-cli",
+  "version": "0.1.0",
+  "description": "Agent-friendly SEC EDGAR CLI",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "edgar": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finlayi/edgar-cli.git"
+  },
+  "homepage": "https://github.com/finlayi/edgar-cli#readme",
+  "bugs": {
+    "url": "https://github.com/finlayi/edgar-cli/issues"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "edgar",
+    "sec",
+    "cli",
+    "npx",
+    "filings"
+  ],
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "commander": "^14.0.1",
+    "p-limit": "^7.1.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "eslint": "^8.57.1",
+    "nock": "^14.0.10",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
