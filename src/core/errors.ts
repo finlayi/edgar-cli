@@ -1,5 +1,6 @@
 export enum ErrorCode {
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  DOCS_REQUIRED = 'DOCS_REQUIRED',
   IDENTITY_REQUIRED = 'IDENTITY_REQUIRED',
   RATE_LIMITED = 'RATE_LIMITED',
   NOT_FOUND = 'NOT_FOUND',
@@ -10,6 +11,7 @@ export enum ErrorCode {
 
 export const EXIT_CODE_MAP: Record<ErrorCode, number> = {
   [ErrorCode.VALIDATION_ERROR]: 2,
+  [ErrorCode.DOCS_REQUIRED]: 2,
   [ErrorCode.IDENTITY_REQUIRED]: 3,
   [ErrorCode.RATE_LIMITED]: 4,
   [ErrorCode.NOT_FOUND]: 5,

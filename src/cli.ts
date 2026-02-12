@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import { runFactsGet } from './commands/facts.js';
 import { runFilingsGet, runFilingsList } from './commands/filings.js';
+import {
+  parseResearchProfile,
+  runResearchAsk,
+  runResearchAskById,
+  runResearchSync
+} from './commands/research.js';
 import { runResolve } from './commands/resolve.js';
 import {
   buildRuntimeOptions,
@@ -120,7 +126,10 @@ async function executeCommand(
   command: string,
   commandObj: Command,
   io: CliIo,
-  handler: (context: CommandContext) => Promise<CommandResult>
+  handler: (context: CommandContext) => Promise<CommandResult>,
+  options?: {
+    requiresSecIdentity?: boolean;
+  }
 ): Promise<void> {
   const globalOptions = commandObj.optsWithGlobals();
   const runtime = buildRuntimeOptions(
@@ -137,7 +146,10 @@ async function executeCommand(
   );
 
   try {
-    const userAgent = requireUserAgent(runtime.userAgent);
+    const requiresSecIdentity = options?.requiresSecIdentity ?? true;
+    const userAgent = requiresSecIdentity
+      ? requireUserAgent(runtime.userAgent)
+      : runtime.userAgent ?? 'edgar-cli local research';
     const secClient = new SecClient({
       userAgent,
       verbose: runtime.verbose,
@@ -238,14 +250,17 @@ export function buildProgram(io: CliIo): Command {
     .command('get')
     .requiredOption('--id <id>', 'Ticker or CIK')
     .requiredOption('--accession <accession>', 'Accession number: XXXXXXXXXX-XX-XXXXXX')
-    .option('--format <format>', 'url|html|text', 'url')
+    .option('--format <format>', 'url|html|text|markdown', 'url')
     .action(async function actionFilingsGet(this: Command, options: Record<string, string>) {
       const format = options.format;
-      if (!['url', 'html', 'text'].includes(format)) {
+      if (!['url', 'html', 'text', 'markdown'].includes(format)) {
         throw new CLIAbortError(
           emitError({
             command: 'filings get',
-            err: new CLIError(ErrorCode.VALIDATION_ERROR, '--format must be one of url|html|text'),
+            err: new CLIError(
+              ErrorCode.VALIDATION_ERROR,
+              '--format must be one of url|html|text|markdown'
+            ),
             runtimeView: 'summary',
             humanMode: false,
             io
@@ -258,7 +273,7 @@ export function buildProgram(io: CliIo): Command {
           {
             id: options.id,
             accession: options.accession,
-            format: format as 'url' | 'html' | 'text'
+            format: format as 'url' | 'html' | 'text' | 'markdown'
           },
           context
         )
@@ -302,7 +317,124 @@ export function buildProgram(io: CliIo): Command {
       );
     });
 
+  const research = program
+    .command('research')
+    .description('Run deterministic research workflows over explicit docs or cached filing profiles');
+
+  research
+    .command('sync')
+    .description('Cache a deterministic research corpus for a company/profile')
+    .requiredOption('--id <id>', 'Ticker or CIK')
+    .option('--profile <profile>', 'core|events|financials', 'core')
+    .option('--cache-dir <path>', 'Override cache directory')
+    .option('--refresh', 'Force refetch even when cached docs exist')
+    .action(async function actionResearchSync(
+      this: Command,
+      options: {
+        id: string;
+        profile: string;
+        cacheDir?: string;
+        refresh?: boolean;
+      }
+    ) {
+      const profile = parseResearchProfile(options.profile);
+
+      await executeCommand(
+        'research sync',
+        this,
+        io,
+        async (context) =>
+          runResearchSync(
+            {
+              id: options.id,
+              profile,
+              cacheDir: options.cacheDir,
+              refresh: Boolean(options.refresh)
+            },
+            context
+          ),
+        { requiresSecIdentity: true }
+      );
+    });
+
+  research
+    .command('ask')
+    .description(
+      'Query explicitly provided local docs, or a cached company profile corpus when --id is used'
+    )
+    .argument('<query>', 'Natural language query')
+    .option('--id <id>', 'Ticker or CIK for cached/profile-based research')
+    .option('--profile <profile>', 'core|events|financials (used with --id)', 'core')
+    .option('--cache-dir <path>', 'Override cache directory')
+    .option('--refresh', 'With --id, force refetch of filings before querying')
+    .option('--doc <path>', 'Path to a local document (repeatable)', collectValues, [])
+    .option(
+      '--manifest <path>',
+      'Path to JSON manifest: either ["doc1", ...] or {"docs": ["doc1", ...]}'
+    )
+    .option('--top-k <n>', 'Maximum number of chunks to return', '8')
+    .option('--chunk-lines <n>', 'Number of lines per retrieval chunk', '40')
+    .option('--chunk-overlap <n>', 'Line overlap between retrieval chunks', '10')
+    .action(async function actionResearchAsk(
+      this: Command,
+      query: string,
+      options: {
+        id?: string;
+        profile: string;
+        cacheDir?: string;
+        refresh?: boolean;
+        doc: string[];
+        manifest?: string;
+        topK: string;
+        chunkLines: string;
+        chunkOverlap: string;
+      }
+    ) {
+      const topK = parsePositiveInt(options.topK, '--top-k');
+      const chunkLines = parsePositiveInt(options.chunkLines, '--chunk-lines');
+      const chunkOverlap = parseNonNegativeInt(options.chunkOverlap, '--chunk-overlap');
+      const requiresSecIdentity = Boolean(options.id);
+      const profile = parseResearchProfile(options.profile);
+
+      await executeCommand(
+        'research ask',
+        this,
+        io,
+        async (context) =>
+          options.id
+            ? runResearchAskById(
+                {
+                  id: options.id,
+                  query,
+                  profile,
+                  cacheDir: options.cacheDir,
+                  refresh: Boolean(options.refresh),
+                  topK,
+                  chunkLines,
+                  chunkOverlap
+                },
+                context
+              )
+            : runResearchAsk(
+                {
+                  query,
+                  docs: options.doc ?? [],
+                  manifestPath: options.manifest,
+                  topK,
+                  chunkLines,
+                  chunkOverlap
+                },
+                context
+              ),
+        { requiresSecIdentity }
+      );
+    });
+
   return program;
+}
+
+function collectValues(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }
 
 export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<number> {

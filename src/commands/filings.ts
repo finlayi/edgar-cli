@@ -1,4 +1,5 @@
-import * as cheerio from 'cheerio';
+import TurndownService from 'turndown';
+import { gfm } from '@joplin/turndown-plugin-gfm';
 
 import { CLIError, ErrorCode } from '../core/errors.js';
 import { CommandContext, CommandResult } from '../core/runtime.js';
@@ -39,6 +40,103 @@ interface FilingRow {
   reportDate: string | null;
   primaryDocument: string | null;
   filingUrl: string | null;
+}
+
+function buildMarkdownConverter(): TurndownService {
+  const service = new TurndownService({
+    headingStyle: 'atx',
+    hr: '---',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    fence: '```',
+    emDelimiter: '*',
+    strongDelimiter: '**',
+    linkStyle: 'inlined'
+  });
+
+  service.use(gfm);
+  service.remove(['script', 'style', 'noscript', 'iframe', 'canvas']);
+
+  return service;
+}
+
+const markdownConverter = buildMarkdownConverter();
+
+function stripInlineXbrlHeaders(content: string): string {
+  return content
+    .replace(/<ix:header[\s\S]*?<\/ix:header>/gi, '')
+    .replace(/<ix:hidden[\s\S]*?<\/ix:hidden>/gi, '')
+    .replace(/<ix:resources[\s\S]*?<\/ix:resources>/gi, '');
+}
+
+function splitMarkdownTableCells(line: string): string[] {
+  const trimmed = line.trim();
+  const withoutLeadingPipe = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const withoutTrailingPipe = withoutLeadingPipe.endsWith('|')
+    ? withoutLeadingPipe.slice(0, -1)
+    : withoutLeadingPipe;
+
+  return withoutTrailingPipe.split('|').map((cell) => cell.trim());
+}
+
+function isMarkdownTableSeparatorLine(line: string): boolean {
+  const cells = splitMarkdownTableCells(line);
+  if (cells.length === 0) {
+    return false;
+  }
+
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, '')));
+}
+
+function collapseLayoutTables(markdown: string): string {
+  const lines = markdown.split('\n');
+  const output: string[] = [];
+
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const line = lines[idx];
+    if (!line.trimStart().startsWith('|')) {
+      output.push(line);
+      continue;
+    }
+
+    const tableBlock = [line];
+    while (idx + 1 < lines.length && lines[idx + 1].trimStart().startsWith('|')) {
+      idx += 1;
+      tableBlock.push(lines[idx]);
+    }
+
+    const hasSeparator = tableBlock.some(isMarkdownTableSeparatorLine);
+    if (!hasSeparator) {
+      output.push(...tableBlock);
+      continue;
+    }
+
+    const dataRows = tableBlock.filter((row) => !isMarkdownTableSeparatorLine(row));
+    const nonEmptyCellCounts = dataRows.map(
+      (row) => splitMarkdownTableCells(row).filter((cell) => cell.length > 0).length
+    );
+    const maxNonEmptyCells = Math.max(...nonEmptyCellCounts, 0);
+    const avgNonEmptyCells =
+      nonEmptyCellCounts.reduce((sum, count) => sum + count, 0) /
+      Math.max(nonEmptyCellCounts.length, 1);
+    const isLayoutTable = maxNonEmptyCells <= 1 || avgNonEmptyCells <= 1.2;
+
+    if (!isLayoutTable) {
+      output.push(...tableBlock);
+      continue;
+    }
+
+    const flattenedRows = dataRows
+      .map((row) => splitMarkdownTableCells(row).filter((cell) => cell.length > 0).join(' '))
+      .map((row) => row.replace(/\s+/g, ' ').trim())
+      .filter((row) => row.length > 0);
+
+    if (flattenedRows.length > 0) {
+      output.push(...flattenedRows, '');
+    }
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function zipRecentFilings(cik: string, recent: RecentFilings | undefined): FilingRow[] {
@@ -84,9 +182,18 @@ function zipRecentFilings(cik: string, recent: RecentFilings | undefined): Filin
   return rows;
 }
 
-function extractTextFromHtml(content: string): string {
-  const $ = cheerio.load(content);
-  return $.text().replace(/\s+/g, ' ').trim();
+function extractMarkdownFromHtml(content: string): string {
+  const sanitizedHtml = stripInlineXbrlHeaders(content);
+  const markdown = markdownConverter
+    .turndown(sanitizedHtml)
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return collapseLayoutTables(markdown);
 }
 
 export async function runFilingsList(
@@ -137,7 +244,7 @@ export async function runFilingsGet(
   params: {
     id: string;
     accession: string;
-    format: 'url' | 'html' | 'text';
+    format: 'url' | 'html' | 'text' | 'markdown';
   },
   context: CommandContext
 ): Promise<CommandResult> {
@@ -188,7 +295,7 @@ export async function runFilingsGet(
     data: {
       accession: match.accession,
       url: match.filingUrl,
-      content: extractTextFromHtml(content)
+      content: extractMarkdownFromHtml(content)
     }
   };
 }
