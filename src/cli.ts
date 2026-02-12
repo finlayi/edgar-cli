@@ -365,6 +365,8 @@ export function buildProgram(io: CliIo): Command {
     .argument('<query>', 'Natural language query')
     .option('--id <id>', 'Ticker or CIK for cached/profile-based research')
     .option('--profile <profile>', 'core|events|financials (used with --id)', 'core')
+    .option('--form <form>', 'SEC form filter for scoped filing selection with --id, e.g. 10-Q')
+    .option('--latest <n>', 'With --id, limit to latest N filings after filters')
     .option('--cache-dir <path>', 'Override cache directory')
     .option('--refresh', 'With --id, force refetch of filings before querying')
     .option('--doc <path>', 'Path to a local document (repeatable)', collectValues, [])
@@ -381,6 +383,8 @@ export function buildProgram(io: CliIo): Command {
       options: {
         id?: string;
         profile: string;
+        form?: string;
+        latest?: string;
         cacheDir?: string;
         refresh?: boolean;
         doc: string[];
@@ -393,6 +397,26 @@ export function buildProgram(io: CliIo): Command {
       const topK = parsePositiveInt(options.topK, '--top-k');
       const chunkLines = parsePositiveInt(options.chunkLines, '--chunk-lines');
       const chunkOverlap = parseNonNegativeInt(options.chunkOverlap, '--chunk-overlap');
+      const latest =
+        options.latest === undefined
+          ? undefined
+          : parsePositiveInt(options.latest, '--latest');
+
+      if (!options.id && (options.form || latest !== undefined)) {
+        throw new CLIAbortError(
+          emitError({
+            command: 'research ask',
+            err: new CLIError(
+              ErrorCode.VALIDATION_ERROR,
+              '--form and --latest require --id'
+            ),
+            runtimeView: 'summary',
+            humanMode: false,
+            io
+          })
+        );
+      }
+
       const requiresSecIdentity = Boolean(options.id);
       const profile = parseResearchProfile(options.profile);
 
@@ -407,6 +431,10 @@ export function buildProgram(io: CliIo): Command {
                   id: options.id,
                   query,
                   profile,
+                  scope: {
+                    form: options.form,
+                    latest
+                  },
                   cacheDir: options.cacheDir,
                   refresh: Boolean(options.refresh),
                   topK,

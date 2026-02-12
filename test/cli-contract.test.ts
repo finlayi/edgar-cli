@@ -433,6 +433,20 @@ describe('cli contract', () => {
     expect((payload.error as { code: string }).code).toBe('IDENTITY_REQUIRED');
   });
 
+  it('returns VALIDATION_ERROR when --form/--latest are used without --id', async () => {
+    const { io, capture } = buildIo();
+
+    const exitCode = await runCli(
+      ['research', 'ask', 'revenue trends', '--form', '10-Q', '--latest', '1'],
+      io
+    );
+
+    expect(exitCode).toBe(2);
+    const payload = JSON.parse(capture.stdout.trim()) as Record<string, unknown>;
+    expect(payload.ok).toBe(false);
+    expect((payload.error as { code: string }).code).toBe('VALIDATION_ERROR');
+  });
+
   it('runs research ask with explicit docs and lexical provenance', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'edgar-cli-test-'));
     const docPathA = path.join(tempDir, 'nvda-8k.md');
@@ -665,6 +679,61 @@ describe('cli contract', () => {
       expect(data.corpus_docs_count).toBeGreaterThan(0);
       expect(data.result_count).toBeGreaterThan(0);
       expect(data.results[0].excerpt.toLowerCase()).toContain('resigned');
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs research ask with --id --form --latest against scoped filings', async () => {
+    vi.stubGlobal('fetch', researchSyncFixtureFetch());
+
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'edgar-cli-cache-scope-'));
+    try {
+      const { io, capture } = buildIo();
+
+      const exitCode = await runCli(
+        [
+          '--user-agent',
+          'Name user@example.com',
+          'research',
+          'ask',
+          'revenue growth',
+          '--id',
+          'AAPL',
+          '--form',
+          '10-Q',
+          '--latest',
+          '1',
+          '--cache-dir',
+          tempDir,
+          '--top-k',
+          '3'
+        ],
+        io
+      );
+
+      expect(exitCode).toBe(0);
+      const payload = JSON.parse(capture.stdout.trim()) as Record<string, unknown>;
+      expect(payload.ok).toBe(true);
+      expect(payload.command).toBe('research ask');
+
+      const data = payload.data as {
+        backend: string;
+        corpus_docs_count: number;
+        scope: { form: string | null; latest: number };
+        selected_filings: Array<{ form: string | null; accession: string }>;
+        result_count: number;
+        results: Array<{ excerpt: string }>;
+      };
+
+      expect(data.backend).toBe('lexical');
+      expect(data.corpus_docs_count).toBe(1);
+      expect(data.scope.form).toBe('10-Q');
+      expect(data.scope.latest).toBe(1);
+      expect(data.selected_filings.length).toBe(1);
+      expect(data.selected_filings[0].form).toBe('10-Q');
+      expect(data.result_count).toBeGreaterThan(0);
+      expect(data.results[0].excerpt.toLowerCase()).toContain('revenue growth');
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

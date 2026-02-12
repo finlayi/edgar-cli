@@ -43,6 +43,11 @@ interface FilingRow {
   filingUrl: string | null;
 }
 
+interface AskScope {
+  form?: string;
+  latest?: number;
+}
+
 const PROFILE_RULES: Record<ResearchProfile, SyncRule[]> = {
   core: [
     { form: '10-K', queryLimit: 1 },
@@ -133,6 +138,11 @@ function parseCachedManifest(value: unknown): CachedManifest {
   return manifest;
 }
 
+function normalizeForm(value?: string): string | undefined {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
 async function readCachedManifest(
   cacheRoot: string,
   cik: string,
@@ -186,6 +196,80 @@ async function fileExists(filePath: string): Promise<boolean> {
 
     throw new CLIError(ErrorCode.VALIDATION_ERROR, `Unable to stat ${filePath}: ${err.message}`);
   }
+}
+
+async function materializeCachedDocs(params: {
+  cacheRoot: string;
+  cik: string;
+  rows: FilingRow[];
+  refresh?: boolean;
+  context: CommandContext;
+}): Promise<{
+  docs: CachedDoc[];
+  fetchedCount: number;
+  reusedCount: number;
+  skipped: Array<{ accession: string; reason: string }>;
+}> {
+  const docs: CachedDoc[] = [];
+  const skipped: Array<{ accession: string; reason: string }> = [];
+  let fetchedCount = 0;
+  let reusedCount = 0;
+
+  for (const row of params.rows) {
+    const docPath = filingDocPath(params.cacheRoot, params.cik, row.accession);
+    const shouldUseCache = !params.refresh && (await fileExists(docPath));
+
+    if (!shouldUseCache) {
+      try {
+        const filingResult = await runFilingsGet(
+          {
+            id: params.cik,
+            accession: row.accession,
+            format: 'markdown'
+          },
+          params.context
+        );
+
+        const filingData = filingResult.data as { content?: unknown };
+        if (typeof filingData.content !== 'string') {
+          throw new CLIError(
+            ErrorCode.PARSE_ERROR,
+            `Unable to parse markdown content for accession ${row.accession}`
+          );
+        }
+
+        await mkdir(path.dirname(docPath), { recursive: true });
+        const content = filingData.content.endsWith('\n') ? filingData.content : `${filingData.content}\n`;
+        await writeFile(docPath, content, 'utf8');
+        fetchedCount += 1;
+      } catch (error) {
+        if (error instanceof CLIError && error.code === ErrorCode.NOT_FOUND) {
+          skipped.push({ accession: row.accession, reason: error.message });
+          continue;
+        }
+
+        throw error;
+      }
+    } else {
+      reusedCount += 1;
+    }
+
+    docs.push({
+      accession: row.accession,
+      form: row.form,
+      filing_date: row.filingDate,
+      report_date: row.reportDate,
+      filing_url: row.filingUrl,
+      path: docPath
+    });
+  }
+
+  return {
+    docs,
+    fetchedCount,
+    reusedCount,
+    skipped
+  };
 }
 
 export function parseResearchProfile(value: string): ResearchProfile {
@@ -678,60 +762,13 @@ export async function runResearchSync(
   const selectedRows = [...selectedByAccession.values()].sort((a, b) =>
     (b.filingDate ?? '').localeCompare(a.filingDate ?? '')
   );
-
-  const docs: CachedDoc[] = [];
-  const skipped: Array<{ accession: string; reason: string }> = [];
-  let fetchedCount = 0;
-  let reusedCount = 0;
-
-  for (const row of selectedRows) {
-    const docPath = filingDocPath(cacheRoot, entity.cik, row.accession);
-    const shouldUseCache = !params.refresh && (await fileExists(docPath));
-
-    if (!shouldUseCache) {
-      try {
-        const filingResult = await runFilingsGet(
-          {
-            id: entity.cik,
-            accession: row.accession,
-            format: 'markdown'
-          },
-          context
-        );
-
-        const filingData = filingResult.data as { content?: unknown };
-        if (typeof filingData.content !== 'string') {
-          throw new CLIError(
-            ErrorCode.PARSE_ERROR,
-            `Unable to parse markdown content for accession ${row.accession}`
-          );
-        }
-
-        await mkdir(path.dirname(docPath), { recursive: true });
-        const content = filingData.content.endsWith('\n') ? filingData.content : `${filingData.content}\n`;
-        await writeFile(docPath, content, 'utf8');
-        fetchedCount += 1;
-      } catch (error) {
-        if (error instanceof CLIError && error.code === ErrorCode.NOT_FOUND) {
-          skipped.push({ accession: row.accession, reason: error.message });
-          continue;
-        }
-
-        throw error;
-      }
-    } else {
-      reusedCount += 1;
-    }
-
-    docs.push({
-      accession: row.accession,
-      form: row.form,
-      filing_date: row.filingDate,
-      report_date: row.reportDate,
-      filing_url: row.filingUrl,
-      path: docPath
-    });
-  }
+  const { docs, fetchedCount, reusedCount, skipped } = await materializeCachedDocs({
+    cacheRoot,
+    cik: entity.cik,
+    rows: selectedRows,
+    refresh: params.refresh,
+    context
+  });
 
   const manifest: CachedManifest = {
     version: 1,
@@ -800,6 +837,7 @@ export async function runResearchAskById(
     id: string;
     query: string;
     profile: ResearchProfile;
+    scope?: AskScope;
     cacheDir?: string;
     refresh?: boolean;
     topK: number;
@@ -810,6 +848,77 @@ export async function runResearchAskById(
 ): Promise<CommandResult> {
   const cacheRoot = resolveCacheRoot(params.cacheDir);
   const entity = await resolveEntity(params.id, context.secClient, { strictMapMatch: false });
+  const form = normalizeForm(params.scope?.form);
+
+  if (form || params.scope?.latest !== undefined) {
+    const latest = params.scope?.latest;
+    const listResult = await runFilingsList(
+      {
+        id: entity.cik,
+        form,
+        queryLimit: latest
+      },
+      context
+    );
+    const selectedRows = listResult.data as FilingRow[];
+
+    if (selectedRows.length === 0) {
+      const formLabel = form ?? 'any form';
+      throw new CLIError(
+        ErrorCode.NOT_FOUND,
+        `No filings found for ${params.id} using ${formLabel}.`
+      );
+    }
+
+    const { docs, fetchedCount, reusedCount, skipped } = await materializeCachedDocs({
+      cacheRoot,
+      cik: entity.cik,
+      rows: selectedRows,
+      refresh: params.refresh,
+      context
+    });
+
+    if (docs.length === 0) {
+      throw new CLIError(
+        ErrorCode.DOCS_REQUIRED,
+        `No queryable filings were fetched for ${params.id}.`
+      );
+    }
+
+    const docPaths = docs.map((doc) => doc.path);
+    const searchResult = await runLexicalSearch({
+      query: params.query,
+      docPaths,
+      topK: params.topK,
+      chunkLines: params.chunkLines,
+      chunkOverlap: params.chunkOverlap
+    });
+    const searchData = searchResult.data as Record<string, unknown>;
+
+    return {
+      data: {
+        ...searchData,
+        id: params.id,
+        cik: entity.cik,
+        ticker: entity.ticker,
+        title: entity.title,
+        cache_root: cacheRoot,
+        scope: {
+          form: form ?? null,
+          latest: latest ?? null
+        },
+        corpus_docs_count: docs.length,
+        selected_filings: docs,
+        sync: {
+          fetched_count: fetchedCount,
+          reused_count: reusedCount,
+          docs_count: docs.length,
+          skipped_count: skipped.length,
+          skipped
+        }
+      }
+    };
+  }
 
   let manifest = !params.refresh
     ? await readCachedManifest(cacheRoot, entity.cik, params.profile)

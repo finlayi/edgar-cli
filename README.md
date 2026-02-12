@@ -73,6 +73,9 @@ npx edgar-cli --user-agent "Your Name your.email@example.com" research sync --id
 
 # Query by ticker against cached corpus (auto-syncs on cache miss)
 npx edgar-cli --user-agent "Your Name your.email@example.com" research ask "what changed on the board?" --id NVDA --profile core
+
+# Query latest filing(s) in one shot: discover -> fetch/cache -> search
+npx edgar-cli --user-agent "Your Name your.email@example.com" research ask "gross margin drivers" --id AAPL --form 10-Q --latest 1
 ```
 
 ## Research Profiles and Cache
@@ -90,6 +93,11 @@ By default, cached corpora are stored in:
 - `~/.cache/edgar-cli`
 
 Override per command with `--cache-dir`.
+
+When using `research ask --id`, you can also scope discovery directly:
+
+- `--form <form>` to filter filings by form type (e.g. `10-Q`)
+- `--latest <n>` to limit selection to the latest N filings after filters
 
 ## Output Contract (default)
 
