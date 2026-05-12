@@ -1,0 +1,27 @@
+{
+  "name": "edgar-cli-darwin-arm64",
+  "version": "0.1.4",
+  "description": "Prebuilt native edgar-cli binary for macOS arm64",
+  "license": "MIT",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finlayi/edgar-cli.git",
+    "directory": "npm/platform/edgar-cli-darwin-arm64"
+  },
+  "bin": {
+    "edgar-native": "bin/edgar"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ]
+}

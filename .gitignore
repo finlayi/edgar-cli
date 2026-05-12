@@ -1,5 +1,6 @@
 node_modules/
 dist/
+npm/platform/*/bin/
 coverage/
 .env
 .DS_Store

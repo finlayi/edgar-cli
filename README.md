@@ -4,7 +4,7 @@ Agent-friendly SEC EDGAR CLI for filings and company facts.
 
 ## Features
 
-- `npx`-friendly Node/TypeScript package (no Python runtime needed)
+- `npx`-friendly native Go runtime (no Node runtime after launch, no Python runtime)
 - JSON envelope output by default for stable automation
 - Strict SEC identity enforcement (`--user-agent` or `EDGAR_USER_AGENT`)
 - Core commands:
@@ -24,9 +24,10 @@ npx edgar-cli --help
 Local development:
 
 ```bash
-npm install
-npm run build
-node dist/cli.js --help
+go test ./...
+node npm/scripts/build-native.cjs
+./dist/edgar --help
+npm --prefix npm test
 ```
 
 ## SEC Identity Requirement
@@ -135,7 +136,7 @@ See [`SECURITY.md`](SECURITY.md) for vulnerability reporting guidance.
 ## Development
 
 ```bash
-npm run typecheck
-npm run test
-npm run build
+go test ./...
+npm --prefix npm test
+node npm/scripts/build-native.cjs
 ```
