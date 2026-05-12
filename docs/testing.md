@@ -3,19 +3,20 @@
 Run the full test suite:
 
 ```bash
-npm test
+go test ./...
+npm --prefix npm test
 ```
 
-Run type checks:
+Build the native binary:
 
 ```bash
-npm run typecheck
+node npm/scripts/build-native.cjs
 ```
 
-Run build:
+Smoke-test the built runtime:
 
 ```bash
-npm run build
+./dist/edgar --help
 ```
 
 ## Current test focus
@@ -25,3 +26,4 @@ npm run build
 - Filing URL construction and submission filtering
 - SEC error mapping (including 403 undeclared automation and 429 retry)
 - Facts command filtering and `--latest` behavior
+- Native npm launcher platform resolution

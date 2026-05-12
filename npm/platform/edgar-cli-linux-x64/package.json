@@ -1,0 +1,27 @@
+{
+  "name": "edgar-cli-linux-x64",
+  "version": "0.2.0",
+  "description": "Prebuilt native edgar-cli binary for Linux x64",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finlayi/edgar-cli.git",
+    "directory": "npm/platform/edgar-cli-linux-x64"
+  },
+  "bin": {
+    "edgar-native": "bin/edgar"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ]
+}

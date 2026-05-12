@@ -1,0 +1,50 @@
+{
+  "name": "edgar-cli",
+  "version": "0.2.0",
+  "description": "Go-native SEC EDGAR CLI for npx",
+  "license": "MIT",
+  "type": "commonjs",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "edgar-cli": "bin/edgar.cjs",
+    "edgar": "bin/edgar.cjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finlayi/edgar-cli.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/finlayi/edgar-cli#readme",
+  "bugs": {
+    "url": "https://github.com/finlayi/edgar-cli/issues"
+  },
+  "keywords": [
+    "edgar",
+    "sec",
+    "cli",
+    "npx",
+    "filings",
+    "go",
+    "native"
+  ],
+  "optionalDependencies": {
+    "edgar-cli-darwin-arm64": "0.2.0",
+    "edgar-cli-linux-x64": "0.2.0",
+    "edgar-cli-win32-x64": "0.2.0"
+  },
+  "scripts": {
+    "build:native": "node scripts/build-native.cjs",
+    "sync:versions": "node scripts/sync-platform-versions.cjs",
+    "test:versions": "node scripts/sync-platform-versions.cjs --check",
+    "test": "npm run test:versions && node --test test/*.test.cjs"
+  }
+}
