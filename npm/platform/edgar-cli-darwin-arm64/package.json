@@ -1,6 +1,6 @@
 {
   "name": "edgar-cli-darwin-arm64",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Prebuilt native edgar-cli binary for macOS arm64",
   "license": "MIT",
   "os": [
