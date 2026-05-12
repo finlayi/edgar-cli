@@ -13,11 +13,6 @@ const TARGETS = {
     packageDir: path.resolve(__dirname, "..", "platform", "edgar-cli-linux-x64"),
     outputName: "edgar",
     defaultSource: path.resolve(process.cwd(), "dist", "edgar")
-  },
-  "win32-x64": {
-    packageDir: path.resolve(__dirname, "..", "platform", "edgar-cli-win32-x64"),
-    outputName: "edgar.exe",
-    defaultSource: path.resolve(process.cwd(), "dist", "edgar.exe")
   }
 };
 
@@ -65,7 +60,7 @@ function copyDirectoryContents(sourceDir, destinationDir) {
 const { target, source } = parseArgs(process.argv.slice(2));
 
 if (!target) {
-  fail("Missing required flag: --target <darwin-arm64|linux-x64|win32-x64>");
+  fail("Missing required flag: --target <darwin-arm64|linux-x64>");
 }
 
 const spec = TARGETS[target];
@@ -95,8 +90,6 @@ if (sourceStat.isFile()) {
   fail(`Unsupported source type: ${sourcePath}`);
 }
 
-if (target !== "win32-x64") {
-  fs.chmodSync(destination, 0o755);
-}
+fs.chmodSync(destination, 0o755);
 
 process.stdout.write(`Staged ${sourcePath} -> ${destination}\n`);

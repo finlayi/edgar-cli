@@ -15,10 +15,6 @@ const PLATFORM_PACKAGES = [
   {
     name: "edgar-cli-linux-x64",
     path: path.join(ROOT, "platform", "edgar-cli-linux-x64", "package.json")
-  },
-  {
-    name: "edgar-cli-win32-x64",
-    path: path.join(ROOT, "platform", "edgar-cli-win32-x64", "package.json")
   }
 ];
 

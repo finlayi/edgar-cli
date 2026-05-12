@@ -8,7 +8,7 @@ const {
 } = require("../bin/edgar-lib.cjs");
 
 test("NATIVE_TARGETS covers supported no-prereq platforms", () => {
-  assert.deepEqual(Object.keys(NATIVE_TARGETS).sort(), ["darwin-arm64", "linux-x64", "win32-x64"]);
+  assert.deepEqual(Object.keys(NATIVE_TARGETS).sort(), ["darwin-arm64", "linux-x64"]);
 });
 
 test("resolveNativeBinary returns unsupported for unknown platform", () => {

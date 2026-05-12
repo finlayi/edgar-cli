@@ -10,10 +10,6 @@ const NATIVE_TARGETS = {
   "linux-x64": {
     packageName: "edgar-cli-linux-x64",
     binaryRelPath: "bin/edgar"
-  },
-  "win32-x64": {
-    packageName: "edgar-cli-win32-x64",
-    binaryRelPath: "bin/edgar.exe"
   }
 };
 

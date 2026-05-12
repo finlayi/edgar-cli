@@ -21,8 +21,6 @@ jobs:
             os: macos-14
           - target: linux-x64
             os: ubuntu-latest
-          - target: win32-x64
-            os: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
