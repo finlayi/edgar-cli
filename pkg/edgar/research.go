@@ -435,7 +435,17 @@ func parseManifest(raw []byte) ([]string, error) {
 	if err := json.Unmarshal(raw, &object); err == nil && object.Docs != nil {
 		return compactStringList(object.Docs), nil
 	}
-	return nil, NewCLIError(ErrorValidationRequired, "Manifest must be a JSON array of strings or object with a docs string array")
+	var cached struct {
+		Docs []CachedDoc `json:"docs"`
+	}
+	if err := json.Unmarshal(raw, &cached); err == nil && cached.Docs != nil {
+		paths := make([]string, 0, len(cached.Docs))
+		for _, doc := range cached.Docs {
+			paths = append(paths, doc.Path)
+		}
+		return compactStringList(paths), nil
+	}
+	return nil, NewCLIError(ErrorValidationRequired, "Manifest must be a JSON array of strings, object with a docs string array, or cached manifest with docs paths")
 }
 
 func compactStringList(values []string) []string {

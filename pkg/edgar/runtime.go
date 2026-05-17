@@ -28,9 +28,14 @@ type RuntimeInput struct {
 
 func buildRuntimeOptions(input RuntimeInput, env map[string]string) (RuntimeOptions, error) {
 	humanMode := input.Human
-	view := "summary"
-	if input.View == "full" {
+	view := strings.TrimSpace(input.View)
+	switch view {
+	case "summary":
+		view = "summary"
+	case "full":
 		view = "full"
+	default:
+		return RuntimeOptions{}, NewCLIError(ErrorValidationRequired, "--view must be one of summary|full")
 	}
 
 	fields, err := parseFields(input.Fields)

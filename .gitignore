@@ -1,6 +1,7 @@
 node_modules/
 dist/
 npm/platform/*/bin/
+.clawpatch/
 coverage/
 .env
 .DS_Store

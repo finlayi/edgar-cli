@@ -323,12 +323,21 @@ func (app *App) buildFactsHandler(ctx context.Context, args []string) (string, b
 	if taxonomy != "" && !stringIn(taxonomy, []string{"us-gaap", "dei"}) {
 		return "facts get", true, nil, NewCLIError(ErrorValidationRequired, "--taxonomy must be us-gaap or dei")
 	}
+	concept := firstOption(options, "--concept")
+	unit := firstOption(options, "--unit")
+	latest := hasOption(options, "--latest")
+	if concept == "" && unit != "" {
+		return "facts get", true, nil, NewCLIError(ErrorValidationRequired, "--unit requires --concept")
+	}
+	if concept == "" && latest {
+		return "facts get", true, nil, NewCLIError(ErrorValidationRequired, "--latest requires --concept")
+	}
 	params := FactsGetParams{
 		ID:       id,
 		Taxonomy: taxonomy,
-		Concept:  firstOption(options, "--concept"),
-		Unit:     firstOption(options, "--unit"),
-		Latest:   hasOption(options, "--latest"),
+		Concept:  concept,
+		Unit:     unit,
+		Latest:   latest,
 	}
 	return "facts get", true, func(context CommandContext) (CommandResult, error) {
 		return runFactsGet(ctx, params, context)

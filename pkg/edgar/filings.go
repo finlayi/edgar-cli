@@ -217,6 +217,13 @@ func runFilingsGet(ctx context.Context, params FilingsGetParams, context Command
 			"content":   content,
 		}}, nil
 	}
+	if params.Format == "text" {
+		return CommandResult{Data: map[string]any{
+			"accession": match.Accession,
+			"url":       match.FilingURL,
+			"content":   extractPlainTextFromHTML(content),
+		}}, nil
+	}
 	return CommandResult{Data: map[string]any{
 		"accession": match.Accession,
 		"url":       match.FilingURL,

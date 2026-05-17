@@ -39,6 +39,21 @@ func parsePayload(t *testing.T, stdout string) map[string]any {
 	return payload
 }
 
+func assertCLIError(t *testing.T, capture cliCapture, wantExit int, wantCode ErrorCode, wantMessage string) {
+	t.Helper()
+	if capture.code != wantExit {
+		t.Fatalf("exit = %d, want %d stdout=%s stderr=%s", capture.code, wantExit, capture.stdout.String(), capture.stderr.String())
+	}
+	payload := parsePayload(t, capture.stdout.String())
+	errPayload := payload["error"].(map[string]any)
+	if errPayload["code"] != string(wantCode) {
+		t.Fatalf("error = %#v", errPayload)
+	}
+	if wantMessage != "" && !strings.Contains(errPayload["message"].(string), wantMessage) {
+		t.Fatalf("message = %q, want substring %q", errPayload["message"], wantMessage)
+	}
+}
+
 func newSECFixtureServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,14 +130,12 @@ func TestCLIHelp(t *testing.T) {
 
 func TestCLIMissingIdentity(t *testing.T) {
 	capture := runTestCLI(t, []string{"resolve", "AAPL"}, map[string]string{}, nil)
-	if capture.code != 3 {
-		t.Fatalf("exit = %d, want 3", capture.code)
-	}
-	payload := parsePayload(t, capture.stdout.String())
-	errPayload := payload["error"].(map[string]any)
-	if errPayload["code"] != string(ErrorIdentityRequired) {
-		t.Fatalf("error = %#v", errPayload)
-	}
+	assertCLIError(t, capture, 3, ErrorIdentityRequired, "Missing SEC identity")
+}
+
+func TestCLIInvalidView(t *testing.T) {
+	capture := runTestCLI(t, []string{"--view", "totally-wrong", "resolve", "AAPL"}, map[string]string{}, nil)
+	assertCLIError(t, capture, 2, ErrorValidationRequired, "--view must be one of summary|full")
 }
 
 func TestCLIResolve(t *testing.T) {
@@ -209,6 +222,22 @@ func TestCLIFilingsMarkdown(t *testing.T) {
 	content := data["content"].(string)
 	if !strings.Contains(content, "## Highlights") || !strings.Contains(content, "| Name | Value |") || !strings.Contains(content, "| --- | --- |") {
 		t.Fatalf("markdown = %q", content)
+	}
+
+	text := runTestCLI(t, []string{
+		"--user-agent", "Name user@example.com", "filings", "get",
+		"--id", "AAPL", "--accession", "0000320193-26-000006", "--format", "text",
+	}, map[string]string{}, server)
+	if text.code != 0 {
+		t.Fatalf("text exit = %d stdout=%s stderr=%s", text.code, text.stdout.String(), text.stderr.String())
+	}
+	textData := parsePayload(t, text.stdout.String())["data"].(map[string]any)
+	textContent := textData["content"].(string)
+	if !strings.Contains(textContent, "Highlights") || !strings.Contains(textContent, "Name\tValue") || !strings.Contains(textContent, "Revenue\t$1") {
+		t.Fatalf("text = %q", textContent)
+	}
+	if strings.Contains(textContent, "##") || strings.Contains(textContent, "| Name | Value |") || strings.Contains(textContent, "| --- | --- |") {
+		t.Fatalf("text contains markdown syntax: %q", textContent)
 	}
 }
 
@@ -309,6 +338,17 @@ func TestResearchSyncAndAskByID(t *testing.T) {
 	if askData["backend"] != "lexical" || askData["profile"] != "core" || askData["result_count"].(float64) == 0 {
 		t.Fatalf("ask data = %#v", askData)
 	}
+
+	manifestAsk := runTestCLI(t, []string{
+		"research", "ask", "who resigned effective immediately", "--manifest", manifestPath, "--top-k", "3",
+	}, map[string]string{}, nil)
+	if manifestAsk.code != 0 {
+		t.Fatalf("manifest ask exit = %d stdout=%s stderr=%s", manifestAsk.code, manifestAsk.stdout.String(), manifestAsk.stderr.String())
+	}
+	manifestAskData := parsePayload(t, manifestAsk.stdout.String())["data"].(map[string]any)
+	if manifestAskData["backend"] != "lexical" || manifestAskData["result_count"].(float64) == 0 {
+		t.Fatalf("manifest ask data = %#v", manifestAskData)
+	}
 }
 
 func TestResearchAskByIDScoped(t *testing.T) {
@@ -350,6 +390,31 @@ func TestFactsLatest(t *testing.T) {
 	usd := latest["USD"].(map[string]any)
 	if usd["val"].(float64) != 120 || usd["filed"] != "2026-01-30" {
 		t.Fatalf("latest = %#v", latest)
+	}
+}
+
+func TestFactsFiltersRequireConcept(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "unit",
+			args: []string{"facts", "get", "--id", "AAPL", "--unit", "USD"},
+			want: "--unit requires --concept",
+		},
+		{
+			name: "latest",
+			args: []string{"facts", "get", "--id", "AAPL", "--latest"},
+			want: "--latest requires --concept",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			capture := runTestCLI(t, test.args, map[string]string{}, nil)
+			assertCLIError(t, capture, 2, ErrorValidationRequired, test.want)
+		})
 	}
 }
 

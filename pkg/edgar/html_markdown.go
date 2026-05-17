@@ -41,6 +41,28 @@ func extractMarkdownFromHTML(content string) string {
 	return collapseLayoutTables(strings.TrimSpace(collapseBlankLines(strings.Join(out, "\n"))))
 }
 
+func extractPlainTextFromHTML(content string) string {
+	sanitized := stripInlineXBRLHeaders(content)
+	sanitized = removeTagPattern.ReplaceAllString(sanitized, "")
+	sanitized = tablePattern.ReplaceAllStringFunc(sanitized, convertHTMLTableText)
+	sanitized = headingPattern.ReplaceAllStringFunc(sanitized, convertHTMLHeadingText)
+	sanitized = brPattern.ReplaceAllString(sanitized, "\n")
+	sanitized = blockTagPattern.ReplaceAllString(sanitized, "\n")
+	sanitized = tagPattern.ReplaceAllString(sanitized, "")
+	sanitized = html.UnescapeString(sanitized)
+	sanitized = strings.ReplaceAll(sanitized, "\u00a0", " ")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "")
+
+	lines := strings.Split(sanitized, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		line = regexp.MustCompile(` +`).ReplaceAllString(line, " ")
+		out = append(out, line)
+	}
+	return strings.TrimSpace(collapseBlankLines(strings.Join(out, "\n")))
+}
+
 func stripInlineXBRLHeaders(content string) string {
 	return inlineXBRLPattern.ReplaceAllString(content, "")
 }
@@ -56,6 +78,18 @@ func convertHTMLHeading(match string) string {
 		return ""
 	}
 	return "\n" + strings.Repeat("#", level) + " " + text + "\n"
+}
+
+func convertHTMLHeadingText(match string) string {
+	parts := headingPattern.FindStringSubmatch(match)
+	if len(parts) != 3 {
+		return ""
+	}
+	text := markdownCellText(parts[2])
+	if text == "" {
+		return ""
+	}
+	return "\n" + text + "\n"
 }
 
 func convertHTMLTable(tableHTML string) string {
@@ -79,6 +113,35 @@ func convertHTMLTable(tableHTML string) string {
 		if !headerWritten && (rowIdx == 0 || thPattern.MatchString(row)) {
 			rendered = append(rendered, "| "+strings.Join(repeatString("---", len(cells)), " | ")+" |")
 			headerWritten = true
+		}
+	}
+
+	if len(rendered) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(rendered, "\n") + "\n"
+}
+
+func convertHTMLTableText(tableHTML string) string {
+	rows := rowPattern.FindAllString(tableHTML, -1)
+	if len(rows) == 0 {
+		return ""
+	}
+
+	rendered := []string{}
+	for _, row := range rows {
+		cellMatches := cellPattern.FindAllString(row, -1)
+		if len(cellMatches) == 0 {
+			continue
+		}
+		cells := make([]string, 0, len(cellMatches))
+		for _, cell := range cellMatches {
+			if text := markdownCellText(cell); text != "" {
+				cells = append(cells, text)
+			}
+		}
+		if len(cells) > 0 {
+			rendered = append(rendered, strings.Join(cells, "\t"))
 		}
 	}
 
