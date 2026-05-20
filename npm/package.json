@@ -1,6 +1,6 @@
 {
   "name": "edgar-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Go-native SEC EDGAR CLI for npx",
   "license": "MIT",
   "type": "commonjs",
@@ -37,8 +37,8 @@
     "native"
   ],
   "optionalDependencies": {
-    "edgar-cli-darwin-arm64": "0.2.2",
-    "edgar-cli-linux-x64": "0.2.2"
+    "edgar-cli-darwin-arm64": "0.2.3",
+    "edgar-cli-linux-x64": "0.2.3"
   },
   "scripts": {
     "build:native": "node scripts/build-native.cjs",

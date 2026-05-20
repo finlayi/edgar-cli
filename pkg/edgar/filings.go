@@ -2,6 +2,8 @@ package edgar
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -50,9 +52,11 @@ type FilingsListParams struct {
 }
 
 type FilingsGetParams struct {
-	ID        string
-	Accession string
-	Format    string
+	ID         string
+	Accession  string
+	Format     string
+	OutputPath string
+	Raw        bool
 }
 
 func runResolve(ctx context.Context, id string, context CommandContext) (CommandResult, error) {
@@ -195,15 +199,16 @@ func runFilingsGet(ctx context.Context, params FilingsGetParams, context Command
 		return CommandResult{}, NewCLIError(ErrorNotFound, "No primary document found for accession "+accession)
 	}
 
+	data := map[string]any{
+		"accession":       match.Accession,
+		"form":            match.Form,
+		"filingDate":      match.FilingDate,
+		"reportDate":      match.ReportDate,
+		"primaryDocument": match.PrimaryDocument,
+		"url":             match.FilingURL,
+	}
 	if params.Format == "url" {
-		return CommandResult{Data: map[string]any{
-			"accession":       match.Accession,
-			"form":            match.Form,
-			"filingDate":      match.FilingDate,
-			"reportDate":      match.ReportDate,
-			"primaryDocument": match.PrimaryDocument,
-			"url":             match.FilingURL,
-		}}, nil
+		return finishFilingsGet(params, data, *match.FilingURL, false)
 	}
 
 	content, err := context.SecClient.FetchSECText(ctx, *match.FilingURL)
@@ -211,22 +216,39 @@ func runFilingsGet(ctx context.Context, params FilingsGetParams, context Command
 		return CommandResult{}, err
 	}
 	if params.Format == "html" {
-		return CommandResult{Data: map[string]any{
-			"accession": match.Accession,
-			"url":       match.FilingURL,
-			"content":   content,
-		}}, nil
+		return finishFilingsGet(params, data, content, true)
 	}
 	if params.Format == "text" {
-		return CommandResult{Data: map[string]any{
-			"accession": match.Accession,
-			"url":       match.FilingURL,
-			"content":   extractPlainTextFromHTML(content),
-		}}, nil
+		return finishFilingsGet(params, data, extractPlainTextFromHTML(content), true)
 	}
-	return CommandResult{Data: map[string]any{
-		"accession": match.Accession,
-		"url":       match.FilingURL,
-		"content":   extractMarkdownFromHTML(content),
-	}}, nil
+	return finishFilingsGet(params, data, extractMarkdownFromHTML(content), true)
+}
+
+func finishFilingsGet(params FilingsGetParams, data map[string]any, content string, includeContent bool) (CommandResult, error) {
+	if strings.TrimSpace(params.OutputPath) != "" {
+		outputPath := absPath(params.OutputPath)
+		outputDir := filepath.Dir(outputPath)
+		if info, err := os.Stat(outputDir); err != nil {
+			return CommandResult{}, NewCLIError(ErrorValidationRequired, "Unable to write output file "+outputPath+": directory does not exist")
+		} else if !info.IsDir() {
+			return CommandResult{}, NewCLIError(ErrorValidationRequired, "Unable to write output file "+outputPath+": parent is not a directory")
+		}
+		contentBytes := []byte(content)
+		if err := os.WriteFile(outputPath, contentBytes, 0o644); err != nil {
+			return CommandResult{}, NewCLIError(ErrorValidationRequired, "Unable to write output file "+outputPath+": "+err.Error())
+		}
+		data["outputPath"] = outputPath
+		data["bytesWritten"] = len(contentBytes)
+		data["contentFormat"] = params.Format
+		return CommandResult{Data: data}, nil
+	}
+
+	if params.Raw {
+		return CommandResult{RawOutput: &RawOutput{Content: content}}, nil
+	}
+
+	if includeContent {
+		data["content"] = content
+	}
+	return CommandResult{Data: data}, nil
 }

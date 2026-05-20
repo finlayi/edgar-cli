@@ -63,6 +63,22 @@ func newSECFixtureServer(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"0": map[string]any{"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
 			})
+		case r.URL.Path == "/cgi-bin/browse-edgar" && r.URL.Query().Get("company") == "Space Exploration Technologies":
+			w.Header().Set("content-type", "text/html")
+			_, _ = w.Write([]byte(`<!doctype html><html><body>
+<span class="companyName">SPACE EXPLORATION TECHNOLOGIES CORP <acronym title="Central Index Key">CIK</acronym>#: <a href="/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0001181412&amp;owner=exclude&amp;count=40">0001181412 (see all company filings)</a></span>
+<p class="identInfo"><acronym title="Standard Industrial Code">SIC</acronym>: 7370<br />State location: <a href="/cgi-bin/browse-edgar?action=getcompany&amp;State=TX&amp;owner=exclude&amp;count=40">TX</a></p>
+</body></html>`))
+		case r.URL.Path == "/cgi-bin/browse-edgar" && r.URL.Query().Get("company") == "SpaceX":
+			w.Header().Set("content-type", "text/html")
+			_, _ = w.Write([]byte(`<!doctype html><html><body>
+<table class="tableFile2">
+<tr><th>CIK</th><th>Company</th><th>State/Country</th></tr>
+<tr><td valign="top" scope="row"><a href="/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0002068863&amp;owner=exclude&amp;count=40&amp;hidefilings=0">0002068863</a></td><td scope="row">SpaceX - Futurum a Series of Master Fund I LLC</td><td valign="top" scope="row"><a href="/cgi-bin/browse-edgar?action=getcompany&amp;State=TX&amp;owner=exclude&amp;count=40&amp;hidefilings=0">TX</a></td></tr>
+<tr class="evenRow"><td valign="top" scope="row"><a href="/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0002110159&amp;owner=exclude&amp;count=40&amp;hidefilings=0">0002110159</a></td><td scope="row">SpaceX - Nucleus Ventures Jan 2026 a Series of CGF2021 LLC</td><td valign="top" scope="row"><a href="/cgi-bin/browse-edgar?action=getcompany&amp;State=DE&amp;owner=exclude&amp;count=40&amp;hidefilings=0">DE</a></td></tr>
+</table>
+<form><input type="button" value="Next40" onClick="parent.location='/cgi-bin/browse-edgar?action=getcompany&amp;amp;company=SpaceX&amp;start=40&amp;count=40'"></form>
+</body></html>`))
 		case r.URL.Path == "/submissions/CIK0000320193.json":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"cik": "0000320193",
@@ -78,6 +94,21 @@ func newSECFixtureServer(t *testing.T) *httptest.Server {
 						"filingDate":      []string{"2026-01-20", "2026-01-30", "2025-10-31", "2025-12-10"},
 						"reportDate":      []string{"2026-01-20", "2025-12-27", "2025-09-27", "2025-12-10"},
 						"primaryDocument": []string{"aapl-20260120.htm", "aapl-20251227.htm", "aapl-20250927.htm", "aapl-20251110.htm"},
+					},
+				},
+			})
+		case r.URL.Path == "/submissions/CIK0001181412.json":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"cik":     "0001181412",
+				"name":    "SPACE EXPLORATION TECHNOLOGIES CORP",
+				"tickers": []string{},
+				"filings": map[string]any{
+					"recent": map[string]any{
+						"accessionNumber": []string{},
+						"form":            []string{},
+						"filingDate":      []string{},
+						"reportDate":      []string{},
+						"primaryDocument": []string{},
 					},
 				},
 			})
@@ -153,6 +184,73 @@ func TestCLIResolve(t *testing.T) {
 	data := payload["data"].(map[string]any)
 	if data["cik"] != "0000320193" {
 		t.Fatalf("data = %#v", data)
+	}
+}
+
+func TestCLIResolvePrivateCIKFromSubmissions(t *testing.T) {
+	server := newSECFixtureServer(t)
+	defer server.Close()
+
+	capture := runTestCLI(t, []string{"--user-agent", "Name user@example.com", "resolve", "0001181412"}, map[string]string{}, server)
+	if capture.code != 0 {
+		t.Fatalf("exit = %d stderr=%s stdout=%s", capture.code, capture.stderr.String(), capture.stdout.String())
+	}
+	data := parsePayload(t, capture.stdout.String())["data"].(map[string]any)
+	if data["cik"] != "0001181412" || data["title"] != "SPACE EXPLORATION TECHNOLOGIES CORP" {
+		t.Fatalf("data = %#v", data)
+	}
+}
+
+func TestCLIResolveNameErrorSuggestsCompanySearch(t *testing.T) {
+	server := newSECFixtureServer(t)
+	defer server.Close()
+
+	capture := runTestCLI(t, []string{"--user-agent", "Name user@example.com", "resolve", "Space Exploration Technologies"}, map[string]string{}, server)
+	assertCLIError(t, capture, 2, ErrorValidationRequired, "Use `search companies <query>`")
+}
+
+func TestCLICompanySearch(t *testing.T) {
+	server := newSECFixtureServer(t)
+	defer server.Close()
+
+	capture := runTestCLI(t, []string{
+		"--user-agent", "Name user@example.com",
+		"search", "companies", "Space Exploration Technologies",
+	}, map[string]string{}, server)
+	if capture.code != 0 {
+		t.Fatalf("exit = %d stderr=%s stdout=%s", capture.code, capture.stderr.String(), capture.stdout.String())
+	}
+	payload := parsePayload(t, capture.stdout.String())
+	data := payload["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("data = %#v", data)
+	}
+	first := data[0].(map[string]any)
+	if first["cik"] != "0001181412" || first["name"] != "SPACE EXPLORATION TECHNOLOGIES CORP" || first["state"] != "TX" {
+		t.Fatalf("first = %#v", first)
+	}
+	meta := payload["meta"].(map[string]any)
+	if meta["query_truncated"] != false || meta["query_total_count"].(float64) != 1 {
+		t.Fatalf("meta = %#v", meta)
+	}
+
+	alias := runTestCLI(t, []string{
+		"--user-agent", "Name user@example.com",
+		"company", "search", "SpaceX",
+	}, map[string]string{}, server)
+	if alias.code != 0 {
+		t.Fatalf("alias exit = %d stderr=%s stdout=%s", alias.code, alias.stderr.String(), alias.stdout.String())
+	}
+	aliasData := parsePayload(t, alias.stdout.String())["data"].([]any)
+	if len(aliasData) != 2 || aliasData[0].(map[string]any)["name"] != "SpaceX - Futurum a Series of Master Fund I LLC" {
+		t.Fatalf("alias data = %#v", aliasData)
+	}
+	aliasMeta := parsePayload(t, alias.stdout.String())["meta"].(map[string]any)
+	if aliasMeta["query_truncated"] != true {
+		t.Fatalf("alias meta = %#v", aliasMeta)
+	}
+	if _, ok := aliasMeta["query_total_count"]; ok {
+		t.Fatalf("truncated search should not claim total count: %#v", aliasMeta)
 	}
 }
 
@@ -238,6 +336,37 @@ func TestCLIFilingsMarkdown(t *testing.T) {
 	}
 	if strings.Contains(textContent, "##") || strings.Contains(textContent, "| Name | Value |") || strings.Contains(textContent, "| --- | --- |") {
 		t.Fatalf("text contains markdown syntax: %q", textContent)
+	}
+
+	raw := runTestCLI(t, []string{
+		"--user-agent", "Name user@example.com", "filings", "get",
+		"--id", "AAPL", "--accession", "0000320193-26-000006", "--format", "text", "--raw",
+	}, map[string]string{}, server)
+	if raw.code != 0 {
+		t.Fatalf("raw exit = %d stdout=%s stderr=%s", raw.code, raw.stdout.String(), raw.stderr.String())
+	}
+	if strings.HasPrefix(strings.TrimSpace(raw.stdout.String()), "{") || !strings.Contains(raw.stdout.String(), "Revenue\t$1") {
+		t.Fatalf("raw stdout = %q", raw.stdout.String())
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "aapl-10q.txt")
+	output := runTestCLI(t, []string{
+		"--user-agent", "Name user@example.com", "filings", "get",
+		"--id", "AAPL", "--accession", "0000320193-26-000006", "--format", "text", "--raw", "--output", outputPath,
+	}, map[string]string{}, server)
+	if output.code != 0 {
+		t.Fatalf("output exit = %d stdout=%s stderr=%s", output.code, output.stdout.String(), output.stderr.String())
+	}
+	outputData := parsePayload(t, output.stdout.String())["data"].(map[string]any)
+	if outputData["outputPath"] != outputPath || outputData["content"] != nil {
+		t.Fatalf("output data = %#v", outputData)
+	}
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "Revenue\t$1") {
+		t.Fatalf("written = %q", written)
 	}
 }
 

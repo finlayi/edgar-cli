@@ -90,14 +90,17 @@ func resolveEntity(ctx context.Context, id string, client *SecClient, strictMapM
 				break
 			}
 		}
-		if match == nil && strictMapMatch {
-			return ResolvedEntity{}, NewCLIError(ErrorNotFound, "No SEC ticker-map record found for CIK "+cik)
-		}
 		var ticker *string
 		var title *string
 		if match != nil {
 			ticker = &match.Ticker
 			title = &match.Title
+		} else if strictMapMatch {
+			entity, err := resolveEntityFromSubmissions(ctx, id, cik, cikNumeric, client)
+			if err != nil {
+				return ResolvedEntity{}, err
+			}
+			return entity, nil
 		}
 		return ResolvedEntity{
 			Input:      id,
@@ -110,7 +113,7 @@ func resolveEntity(ctx context.Context, id string, client *SecClient, strictMapM
 
 	ticker, err := normalizeTicker(id)
 	if err != nil {
-		return ResolvedEntity{}, err
+		return ResolvedEntity{}, NewCLIError(ErrorValidationRequired, "Invalid company id: expected ticker or CIK. Use `search companies <query>` to find a CIK by company name.")
 	}
 	for _, record := range records {
 		if strings.ToUpper(record.Ticker) == ticker {
@@ -125,5 +128,31 @@ func resolveEntity(ctx context.Context, id string, client *SecClient, strictMapM
 		}
 	}
 
-	return ResolvedEntity{}, NewCLIError(ErrorNotFound, "No SEC ticker-map record found for ticker "+ticker)
+	return ResolvedEntity{}, NewCLIError(ErrorNotFound, "No SEC ticker-map record found for ticker "+ticker+". If this is a company name or an unlisted filer, use `search companies <query>` to find a CIK, then pass that CIK as --id.")
+}
+
+func resolveEntityFromSubmissions(ctx context.Context, input string, cik string, cikNumeric int, client *SecClient) (ResolvedEntity, error) {
+	url, err := submissionsURL(client.Hosts(), cik)
+	if err != nil {
+		return ResolvedEntity{}, err
+	}
+	var submissions SubmissionsPayload
+	if err := client.FetchSECJSON(ctx, url, &submissions); err != nil {
+		return ResolvedEntity{}, err
+	}
+	var ticker *string
+	if len(submissions.Tickers) > 0 && strings.TrimSpace(submissions.Tickers[0]) != "" {
+		ticker = &submissions.Tickers[0]
+	}
+	var title *string
+	if strings.TrimSpace(submissions.Name) != "" {
+		title = &submissions.Name
+	}
+	return ResolvedEntity{
+		Input:      input,
+		CIK:        cik,
+		CIKNumeric: cikNumeric,
+		Ticker:     ticker,
+		Title:      title,
+	}, nil
 }

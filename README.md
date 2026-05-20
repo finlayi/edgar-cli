@@ -9,6 +9,8 @@ Agent-friendly SEC EDGAR CLI for filings and company facts.
 - Strict SEC identity enforcement (`--user-agent` or `EDGAR_USER_AGENT`)
 - Core commands:
   - `resolve`
+  - `search companies`
+  - `company search`
   - `filings list`
   - `filings get`
   - `facts get`
@@ -54,6 +56,9 @@ If identity is missing, commands fail with `IDENTITY_REQUIRED`.
 # Resolve ticker -> canonical SEC identity mapping
 npx edgar-cli --user-agent "Your Name your.email@example.com" resolve AAPL
 
+# Search SEC company/entity names -> CIKs
+npx edgar-cli --user-agent "Your Name your.email@example.com" search companies "Space Exploration Technologies"
+
 # List recent 10-K filings
 npx edgar-cli --user-agent "Your Name your.email@example.com" filings list --id AAPL --form 10-K --query-limit 5
 
@@ -62,6 +67,12 @@ npx edgar-cli --user-agent "Your Name your.email@example.com" filings get --id A
 
 # Get filing converted to Markdown
 npx edgar-cli --user-agent "Your Name your.email@example.com" filings get --id AAPL --accession 0000320193-26-000006 --format markdown
+
+# Write raw extracted filing text directly to a file
+npx edgar-cli --user-agent "Your Name your.email@example.com" filings get --id AAPL --accession 0000320193-26-000006 --format text --output /tmp/aapl-10q.txt
+
+# Emit raw extracted filing text to stdout instead of a JSON envelope
+npx edgar-cli --user-agent "Your Name your.email@example.com" filings get --id AAPL --accession 0000320193-26-000006 --format text --raw
 
 # Get concept data (latest per unit)
 npx edgar-cli --user-agent "Your Name your.email@example.com" facts get --id AAPL --taxonomy us-gaap --concept Revenues --latest

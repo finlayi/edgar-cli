@@ -122,6 +122,14 @@ func (app *App) execute(
 }
 
 func (app *App) emitSuccess(command string, result CommandResult, runtime RuntimeOptions) int {
+	if result.RawOutput != nil {
+		if _, err := io.WriteString(app.stdout, result.RawOutput.Content); err != nil {
+			fmt.Fprintf(app.stderr, "%s\n", err.Error())
+			return 10
+		}
+		return 0
+	}
+
 	if runtime.HumanMode {
 		if err := writePrettyJSONLine(app.stdout, result.Data); err != nil {
 			fmt.Fprintf(app.stderr, "%s\n", err.Error())
@@ -182,8 +190,10 @@ Options:
 
 Commands:
   resolve <id>
+  search companies <query>
+  company search <query>
   filings list --id <id> [--form <form>] [--from <yyyy-mm-dd>] [--to <yyyy-mm-dd>]
-  filings get --id <id> --accession <accession> [--format url|html|text|markdown]
+  filings get --id <id> --accession <accession> [--format url|html|text|markdown] [--raw] [--output <path>]
   facts get --id <id> [--taxonomy us-gaap|dei] [--concept <concept>] [--unit <unit>] [--latest]
   research sync --id <id> [--profile core|events|financials] [--cache-dir <path>] [--refresh]
   research ask <query> [--id <id>] [--doc <path>] [--manifest <path>]
@@ -205,6 +215,10 @@ func (app *App) buildHandler(ctx context.Context, args []string) (string, bool, 
 		}, nil
 	case "filings":
 		return app.buildFilingsHandler(ctx, args[1:])
+	case "search":
+		return app.buildSearchHandler(ctx, args[1:])
+	case "company":
+		return app.buildCompanyHandler(ctx, args[1:])
 	case "facts":
 		return app.buildFactsHandler(ctx, args[1:])
 	case "research":
@@ -212,6 +226,39 @@ func (app *App) buildHandler(ctx context.Context, args []string) (string, bool, 
 	default:
 		return args[0], false, nil, NewCLIError(ErrorValidationRequired, "Unknown command: "+args[0])
 	}
+}
+
+func (app *App) buildSearchHandler(ctx context.Context, args []string) (string, bool, func(CommandContext) (CommandResult, error), error) {
+	if len(args) == 0 {
+		return "search", true, nil, NewCLIError(ErrorValidationRequired, "Missing search subcommand")
+	}
+	switch args[0] {
+	case "companies":
+		return app.buildCompanySearchHandler(ctx, "search companies", args[1:])
+	default:
+		return "search", true, nil, NewCLIError(ErrorValidationRequired, "Unknown search subcommand: "+args[0])
+	}
+}
+
+func (app *App) buildCompanyHandler(ctx context.Context, args []string) (string, bool, func(CommandContext) (CommandResult, error), error) {
+	if len(args) == 0 || args[0] != "search" {
+		return "company", true, nil, NewCLIError(ErrorValidationRequired, "Missing or unknown company subcommand")
+	}
+	return app.buildCompanySearchHandler(ctx, "company search", args[1:])
+}
+
+func (app *App) buildCompanySearchHandler(ctx context.Context, command string, args []string) (string, bool, func(CommandContext) (CommandResult, error), error) {
+	_, positionals, err := parseCommandOptions(args, map[string]bool{})
+	if err != nil {
+		return command, true, nil, err
+	}
+	if len(positionals) == 0 {
+		return command, true, nil, NewCLIError(ErrorValidationRequired, "Missing required argument: query")
+	}
+	params := CompanySearchParams{Query: strings.Join(positionals, " ")}
+	return command, true, func(context CommandContext) (CommandResult, error) {
+		return runCompanySearch(ctx, params, context)
+	}, nil
 }
 
 func (app *App) buildFilingsHandler(ctx context.Context, args []string) (string, bool, func(CommandContext) (CommandResult, error), error) {
@@ -273,7 +320,7 @@ func (app *App) buildFilingsHandler(ctx context.Context, args []string) (string,
 		}, nil
 	case "get":
 		options, positionals, err := parseCommandOptions(args[1:], map[string]bool{
-			"--id": true, "--accession": true, "--format": true,
+			"--id": true, "--accession": true, "--format": true, "--output": true, "--raw": false,
 		})
 		if err != nil {
 			return "filings get", true, nil, err
@@ -293,7 +340,11 @@ func (app *App) buildFilingsHandler(ctx context.Context, args []string) (string,
 		if !stringIn(format, []string{"url", "html", "text", "markdown"}) {
 			return "filings get", true, nil, NewCLIError(ErrorValidationRequired, "--format must be one of url|html|text|markdown")
 		}
-		params := FilingsGetParams{ID: id, Accession: accession, Format: format}
+		params := FilingsGetParams{
+			ID: id, Accession: accession, Format: format,
+			OutputPath: firstOption(options, "--output"),
+			Raw:        hasOption(options, "--raw"),
+		}
 		return "filings get", true, func(context CommandContext) (CommandResult, error) {
 			return runFilingsGet(ctx, params, context)
 		}, nil
@@ -555,6 +606,14 @@ func commandNameFromArgs(args []string) string {
 		switch args[0] {
 		case "filings", "facts", "research":
 			return args[0] + " " + args[1]
+		case "search":
+			if args[1] == "companies" {
+				return "search companies"
+			}
+		case "company":
+			if args[1] == "search" {
+				return "company search"
+			}
 		}
 	}
 	return args[0]

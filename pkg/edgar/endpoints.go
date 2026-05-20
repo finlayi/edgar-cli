@@ -1,6 +1,9 @@
 package edgar
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 const (
 	defaultSECDataHost = "https://data.sec.gov"
@@ -46,6 +49,29 @@ func companyFactsURL(hosts SECHosts, cik string) (string, error) {
 
 func tickerMapURL(hosts SECHosts) string {
 	return hosts.withDefaults().WWW + "/files/company_tickers.json"
+}
+
+func companySearchURL(hosts SECHosts, query string) string {
+	values := url.Values{}
+	values.Set("action", "getcompany")
+	values.Set("company", query)
+	values.Set("owner", "exclude")
+	values.Set("count", "40")
+	values.Set("hidefilings", "0")
+	return hosts.withDefaults().WWW + "/cgi-bin/browse-edgar?" + values.Encode()
+}
+
+func companyBrowseURL(hosts SECHosts, cik string) (string, error) {
+	normalized, err := normalizeCIK(cik)
+	if err != nil {
+		return "", err
+	}
+	values := url.Values{}
+	values.Set("action", "getcompany")
+	values.Set("CIK", normalized)
+	values.Set("owner", "exclude")
+	values.Set("count", "40")
+	return hosts.withDefaults().WWW + "/cgi-bin/browse-edgar?" + values.Encode(), nil
 }
 
 func filingDocumentURL(hosts SECHosts, cik string, accession string, primaryDocument string) (string, error) {

@@ -25,6 +25,11 @@ type EnvelopeError struct {
 type CommandResult struct {
 	Data        any
 	MetaUpdates map[string]any
+	RawOutput   *RawOutput
+}
+
+type RawOutput struct {
+	Content string
 }
 
 func timestampNow() string {
