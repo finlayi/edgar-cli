@@ -59,6 +59,21 @@ type FilingsGetParams struct {
 	Raw        bool
 }
 
+type FilingsListResult struct {
+	Rows            []FilingRow
+	TotalCount      int
+	RequestedOffset int
+}
+
+func (result FilingsListResult) MetaUpdates() map[string]any {
+	return map[string]any{
+		"query_total_count":    result.TotalCount,
+		"query_returned_count": len(result.Rows),
+		"query_truncated":      result.RequestedOffset+len(result.Rows) < result.TotalCount,
+		"query_offset":         result.RequestedOffset,
+	}
+}
+
 func runResolve(ctx context.Context, id string, context CommandContext) (CommandResult, error) {
 	entity, err := resolveEntity(ctx, id, context.SecClient, true)
 	if err != nil {
@@ -103,19 +118,19 @@ func stringPointerOrNil(value string) *string {
 	return &value
 }
 
-func runFilingsList(ctx context.Context, params FilingsListParams, context CommandContext) (CommandResult, error) {
+func listFilingRows(ctx context.Context, params FilingsListParams, context CommandContext) (FilingsListResult, error) {
 	entity, err := resolveEntity(ctx, params.ID, context.SecClient, false)
 	if err != nil {
-		return CommandResult{}, err
+		return FilingsListResult{}, err
 	}
 	url, err := submissionsURL(context.SecClient.Hosts(), entity.CIK)
 	if err != nil {
-		return CommandResult{}, err
+		return FilingsListResult{}, err
 	}
 
 	var submissions SubmissionsPayload
 	if err := context.SecClient.FetchSECJSON(ctx, url, &submissions); err != nil {
-		return CommandResult{}, err
+		return FilingsListResult{}, err
 	}
 	rows := zipRecentFilings(context.SecClient.Hosts(), entity.CIK, submissions.Filings.Recent)
 
@@ -155,14 +170,18 @@ func runFilingsList(ctx context.Context, params FilingsListParams, context Comma
 	}
 	pagedRows := filtered[offset:end]
 
+	return FilingsListResult{Rows: pagedRows, TotalCount: len(filtered), RequestedOffset: params.Offset}, nil
+}
+
+func runFilingsList(ctx context.Context, params FilingsListParams, context CommandContext) (CommandResult, error) {
+	result, err := listFilingRows(ctx, params, context)
+	if err != nil {
+		return CommandResult{}, err
+	}
+
 	return CommandResult{
-		Data: pagedRows,
-		MetaUpdates: map[string]any{
-			"query_total_count":    len(filtered),
-			"query_returned_count": len(pagedRows),
-			"query_truncated":      offset+len(pagedRows) < len(filtered),
-			"query_offset":         params.Offset,
-		},
+		Data:        result.Rows,
+		MetaUpdates: result.MetaUpdates(),
 	}, nil
 }
 

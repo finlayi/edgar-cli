@@ -17,6 +17,10 @@ var (
 	headingPattern    = regexp.MustCompile(`(?is)<h([1-6])\b[^>]*>([\s\S]*?)</h[1-6]>`)
 	brPattern         = regexp.MustCompile(`(?is)<br\s*/?>`)
 	blockTagPattern   = regexp.MustCompile(`(?is)</?(p|div|section|article|header|footer|main|li|ul|ol|blockquote|pre|hr)\b[^>]*>`)
+	lineSpacePattern  = regexp.MustCompile(`[ \t]+`)
+	textSpacePattern  = regexp.MustCompile(` +`)
+	cellSpacePattern  = regexp.MustCompile(`[ \t\r\n]+`)
+	separatorPattern  = regexp.MustCompile(`^:?-{3,}:?$`)
 )
 
 func extractMarkdownFromHTML(content string) string {
@@ -35,7 +39,7 @@ func extractMarkdownFromHTML(content string) string {
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		line = regexp.MustCompile(`[ \t]+`).ReplaceAllString(line, " ")
+		line = lineSpacePattern.ReplaceAllString(line, " ")
 		out = append(out, line)
 	}
 	return collapseLayoutTables(strings.TrimSpace(collapseBlankLines(strings.Join(out, "\n"))))
@@ -57,7 +61,7 @@ func extractPlainTextFromHTML(content string) string {
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		line = regexp.MustCompile(` +`).ReplaceAllString(line, " ")
+		line = textSpacePattern.ReplaceAllString(line, " ")
 		out = append(out, line)
 	}
 	return strings.TrimSpace(collapseBlankLines(strings.Join(out, "\n")))
@@ -157,7 +161,7 @@ func markdownCellText(value string) string {
 	value = tagPattern.ReplaceAllString(value, "")
 	value = html.UnescapeString(value)
 	value = strings.ReplaceAll(value, "\u00a0", " ")
-	return strings.TrimSpace(regexp.MustCompile(`[ \t\r\n]+`).ReplaceAllString(value, " "))
+	return strings.TrimSpace(cellSpacePattern.ReplaceAllString(value, " "))
 }
 
 func repeatString(value string, count int) []string {
@@ -194,7 +198,7 @@ func isMarkdownTableSeparatorLine(line string) bool {
 	}
 	for _, cell := range cells {
 		normalized := strings.ReplaceAll(cell, " ", "")
-		if !regexp.MustCompile(`^:?-{3,}:?$`).MatchString(normalized) {
+		if !separatorPattern.MatchString(normalized) {
 			return false
 		}
 	}
@@ -271,7 +275,7 @@ func collapseLayoutTables(markdown string) string {
 					cells = append(cells, cell)
 				}
 			}
-			flattened := strings.TrimSpace(regexp.MustCompile(`[ \t]+`).ReplaceAllString(strings.Join(cells, " "), " "))
+			flattened := strings.TrimSpace(lineSpacePattern.ReplaceAllString(strings.Join(cells, " "), " "))
 			if flattened != "" {
 				output = append(output, flattened)
 			}
